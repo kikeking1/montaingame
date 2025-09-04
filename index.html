@@ -93,13 +93,14 @@ function mkEnemy(x,y){return {x,y,w:10,h:14,vx:(rng()<.5?-0.6:0.6),type:'punk',a
 function mkPickup(x,y,kind){return {x,y,w:6,h:6,kind,used:false}}
 function mkBullet(x,y,dir){return {x,y,w:6,h:4,vx:dir*2.2,dead:false}}
 
-function mkBoss(level){
+function mkBoss(level, arena){
+  const center=arena.x+arena.w/2;
   if(level===0){ // sand eater: spits sand blobs arcs
-    return {x:1520,y:100,w:20,h:18,hp:6, type:'arena', cd:0, phase:0, vx:0}
+    return {x:center-10,y:arena.y-18,w:20,h:18,hp:6,type:'arena',cd:0,vx:0.7,left:arena.x,right:arena.x+arena.w-20};
   } else if(level===1){ // sausage spitter: straight projectiles
-    return {x:1520,y:100,w:20,h:18,hp:7, type:'salchicha', cd:0, phase:0, vx:0}
+    return {x:center-10,y:arena.y-18,w:20,h:18,hp:7,type:'salchicha',cd:0,vx:0.7,left:arena.x,right:arena.x+arena.w-20};
   } else { // boar: full-screen charges
-    return {x:1520,y:100,w:24,h:16,hp:8, type:'cerdo', cd:90, phase:0, vx:0}
+    return {x:arena.x+arena.w-24,y:arena.y-16,w:24,h:16,hp:8,type:'cerdo',cd:90,vx:0,startX:arena.x+arena.w-24};
   }
 }
 
@@ -126,9 +127,9 @@ function resetRuntime(){
     const kind = r<0.6 ? 'lighter' : r<0.8 ? 'coin' : 'gin';
     level.pickups.push(mkPickup(x,y,kind));
   }
-  level.boss=mkBoss(state.level);
-  level.boss.x = levelLength-180;
-  level.boss.startX = level.boss.x;
+  const arena=level.platforms[level.platforms.length-1];
+  level.boss=mkBoss(state.level,arena);
+
   level.goal=null; level.cleared=false; camX=0;
   level.player=mkPlayer();
 }
@@ -201,7 +202,7 @@ function drawPlay(){
   // pickups
   for(const it of level.pickups){ if(it.used) continue; drawPickup(it) }
   // enemies
-  ctx.fillStyle='#d66'; for(const e of level.enemies){ if(!e.alive) continue; ctx.fillRect(e.x-camX,e.y,e.w,e.h) }
+  for(const e of level.enemies){ if(!e.alive) continue; drawEnemy(e) }
   // boss
   if(level.boss && level.boss.hp>0){ drawBoss(level.boss, theme) }
   // bullets
@@ -238,11 +239,30 @@ function shade(hex,amt){ // naive shade
 }
 
 function drawPlayer(p){
-  ctx.fillStyle='#6cf'; ctx.fillRect(p.x-camX,p.y,p.w,p.h);
+  const x=p.x-camX, y=p.y;
+  // legs
+  ctx.fillStyle='#444'; ctx.fillRect(x,y+10,10,4);
+  // body
+  ctx.fillStyle='#6cf'; ctx.fillRect(x,y+4,10,6);
+  // arms
+  ctx.fillRect(x-2,y+5,2,3); ctx.fillRect(x+10,y+5,2,3);
   // head
-  ctx.fillStyle='#fff'; ctx.fillRect(p.x+2-camX,p.y-4,6,4);
-  // direction nose
-  ctx.fillStyle='#9cf'; ctx.fillRect(p.x + (p.dir>0?8:-2) -camX, p.y-2,2,2)
+  ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+2,y-4,6,4);
+  // eyes
+  ctx.fillStyle='#000'; ctx.fillRect(x+(p.dir>0?6:2),y-2,2,2);
+}
+
+function drawEnemy(e){
+  const x=e.x-camX, y=e.y;
+  // legs
+  ctx.fillStyle='#633'; ctx.fillRect(x,y+10,10,4);
+  // body jacket
+  ctx.fillStyle='#d66'; ctx.fillRect(x,y+4,10,6);
+  ctx.fillRect(x-2,y+5,2,3); ctx.fillRect(x+10,y+5,2,3);
+  // head
+  ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+2,y-4,6,4);
+  // punk crest
+  ctx.fillStyle='#f0f'; ctx.fillRect(x+4,y-6,2,2);
 }
 
 function drawPickup(it){
@@ -253,17 +273,17 @@ function drawPickup(it){
 }
 
 function drawBoss(b,theme){
-  if(b.type==='arena'){
-    ctx.fillStyle='#caa';
-  } else if(b.type==='salchicha'){
-    ctx.fillStyle='#a53';
-  } else {
-    ctx.fillStyle='#f7a';
-  }
-  ctx.fillRect(b.x-camX,b.y,b.w,b.h);
+  const x=b.x-camX,y=b.y;
+  const col=b.type==='arena'?'#caa':b.type==='salchicha'?'#a53':'#f7a';
+  // body
+  ctx.fillStyle=col; ctx.fillRect(x,y+4,b.w,b.h-4);
+  // arms
+  ctx.fillRect(x-4,y+6,4,4); ctx.fillRect(x+b.w,y+6,4,4);
+  // head
+  ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+4,y,b.w-8,4);
   // HP bar
   ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
-  ctx.fillStyle=theme.accent; ctx.fillRect(10,10, (b.hp/ (b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
+  ctx.fillStyle=theme.accent; ctx.fillRect(10,10,(b.hp/(b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
 }
 
 // UI Buttons (HTML overlay)
@@ -310,9 +330,16 @@ function updatePlay(){
   if(p.inv>0) p.inv--;
 
   // enemies AI
-  for(const e of level.enemies){ if(!e.alive) continue; e.x += e.vx; // bounce on platform edges
-    let onPlat=false; for(const pl of level.platforms){ if(e.x>pl.x-2 && e.x<pl.x+pl.w+2 && Math.abs(e.y+e.h - pl.y)<2){ onPlat=true; break } }
-    if(!onPlat || rng()<.01) e.vx*=-1;
+  for(const e of level.enemies){
+    if(!e.alive) continue;
+    e.x += e.vx;
+    let plat=null;
+    for(const pl of level.platforms){
+      if(e.x>=pl.x && e.x+e.w<=pl.x+pl.w && Math.abs(e.y+e.h-pl.y)<2){ plat=pl; break; }
+    }
+    if(!plat){ e.vx*=-1; e.x+=e.vx; }
+    else if(e.x<=plat.x || e.x+e.w>=plat.x+plat.w){ e.vx*=-1; }
+    if(Math.abs(e.vx)<0.2) e.vx=0.6*(rng()<.5?1:-1);
     if(aabb(p,e)) hurtPlayer();
   }
 
@@ -333,14 +360,19 @@ function updatePlay(){
 
   // boss logic
   const B=level.boss; if(B && B.hp>0){
-    B.cd--; if(B.type==='arena'){
-      // spit sand blobs (arcs)
-      if(B.cd<=0){ B.cd=70; for(let i=0;i<3;i++){ level.bossShots.push({x:B.x-2, y:B.y+4, w:4,h:3, vx:-1.2-0.2*i, vy:-2-0.4*i, g:0.08, col:'#d6c18f'})}}
-    } else if(B.type==='salchicha'){
-      if(B.cd<=0){ B.cd=60; for(let i=0;i<4;i++){ level.bossShots.push({x:B.x-2,y:B.y+6,w:5,h:3, vx:-2-(i*0.25), vy:(i-1.5)*0.3, g:0, col:'#d67'})}}
+    B.cd--;
+    if(B.type==='arena' || B.type==='salchicha'){
+      B.x += B.vx;
+      if(B.x<B.left || B.x>B.right){ B.vx*=-1; B.x=clamp(B.x,B.left,B.right); }
+      if(B.type==='arena'){
+        if(B.cd<=0){ B.cd=70; for(let i=0;i<3;i++){ level.bossShots.push({x:B.x-2,y:B.y+4,w:4,h:3,vx:-1.2-0.2*i,vy:-2-0.4*i,g:0.08,col:'#d6c18f'})}}
+      } else {
+        if(B.cd<=0){ B.cd=60; for(let i=0;i<4;i++){ level.bossShots.push({x:B.x-2,y:B.y+6,w:5,h:3,vx:-2-(i*0.25),vy:(i-1.5)*0.3,g:0,col:'#d67'})}}
+      }
     } else { // boar charges
-      if(B.cd<=0){ B.cd=140; B.vx = -3.2; }
-      B.x += B.vx; if(B.x<camX-40){ B.vx=0; B.x=B.startX }
+      if(B.cd<=0){ B.cd=140; B.vx=-3.2; }
+      B.x += B.vx;
+      if(B.x<camX-40){ B.vx=0; B.x=B.startX; }
     }
   }
   // boss projectiles update
@@ -351,7 +383,7 @@ function updatePlay(){
   if(B && B.hp>0 && aabb(level.player,B)) hurtPlayer();
 
   // victory -> spawn trophy and exit
-  if(B && B.hp<=0 && !level.cleared){ level.cleared=true; level.goal={x:B.x+10,y:B.y-8,w:6,h:6, col:['#5f5','#fa3','#a5f'][state.level]}; }
+  if(B && B.hp<=0 && !level.cleared){ level.cleared=true; level.goal={x:B.x+B.w/2-3,y:B.y-10,w:6,h:6,col:['#5f5','#fa3','#a5f'][state.level]}; }
   if(level.cleared && level.goal){
     if(aabb(level.player,level.goal)){ state.trophies[state.level]=true; nextAfterClear(); }
   }
