@@ -255,35 +255,50 @@ function drawTitle(t){ ctx.fillStyle='#fff'; ctx.font='bold 16px system-ui'; ctx
 function drawSub(t){ ctx.fillStyle='#bbb'; ctx.font='12px system-ui'; ctx.textAlign='center'; wrapText(t,W/2,40, 280, 14) }
 function wrapText(txt,x,y,maxW,lh){ const words=txt.split(' '); let line=''; for(let i=0;i<words.length;i++){ const test=line+words[i]+' '; if(ctx.measureText(test).width>maxW && i>0){ ctx.fillText(line,x,y); line=words[i]+' '; y+=lh; } else line=test } ctx.fillText(line,x,y) }
 function drawStartInfo(){
-  const x=20; let y=60;
+  const colW=130, gap=20;
+  const leftX=20, rightX=leftX+colW+gap;
+  const top=50;
   ctx.textAlign='left';
   ctx.fillStyle='#fff'; ctx.font='bold 12px system-ui';
-  ctx.fillText('Objetos', x, y);
-  y+=10;
+  ctx.fillText('Objetos', leftX, top);
+  ctx.fillText('Enemigos', rightX, top);
+
   const items=[
     {kind:'coin', name:'Moneda', desc:'Cuando un punky se te acerca puedes darle un euro para evitar la puñalada.'},
     {kind:'gin', name:'Ginebra', desc:'Bebida que te revitaliza y recupera energia.'},
     {kind:'lighter', name:'Mechero', desc:'Con esto podrás encender tus canutos y ennubar a los punkys.'},
   ];
+
+  let y1=top+10;
   for(const it of items){
-    drawPickup({x, y, kind:it.kind});
+    drawPickup({x:leftX, y:y1, kind:it.kind});
     ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
-    wrapText(`${it.name}: ${it.desc}`, x+12, y+5, 280, 12);
-    y+=32;
+    wrapText(`${it.name}: ${it.desc}`, leftX+12, y1+5, colW-20, 12);
+    y1+=28;
   }
-  ctx.fillStyle='#fff'; ctx.font='bold 12px system-ui';
-  ctx.fillText('Enemigos', x, y);
-  y+=10;
   const enemies=[
-    {name:'Punky', desc:'Tipo mal encarado que te pinchara a la minima de cambio.'},
-    {name:'Cometierra', desc:'Monstruo de las profundidades que devora y regurgita tierra.'},
-    {name:'Comesalchichas', desc:'Capaz de devorar una ingente cantidad de salchichas a la vez.'},
-    {name:'El cerdo', desc:'Te perseguira para embestirte en cuanto te vea.'},
+    {kind:'punk', name:'Punky', desc:'Tipo mal encarado que te pinchara a la minima de cambio.'},
+    {kind:'arena', name:'Cometierra', desc:'Monstruo de las profundidades que devora y regurgita tierra.'},
+    {kind:'salchicha', name:'Comesalchichas', desc:'Capaz de devorar una ingente cantidad de salchichas a la vez.'},
+    {kind:'cerdo', name:'El cerdo', desc:'Te perseguira para embestirte en cuanto te vea.'},
   ];
+  let y2=top+10;
   for(const en of enemies){
+    let iconW;
+    if(en.kind==='punk'){
+      drawEnemy({x:rightX, y:y2, w:10, h:14, vx:0});
+      iconW=14;
+    } else {
+      const bW=en.kind==='cerdo'?24:20;
+      const bH=en.kind==='cerdo'?16:18;
+      drawBoss({x:rightX+4, y:y2, w:bW, h:bH, type:en.kind, hp:1});
+      iconW=bW+8;
+    }
     ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
-    wrapText(`${en.name}: ${en.desc}`, x, y, 280, 12);
-    y+=24;
+    const textX=rightX+iconW+4;
+    wrapText(`${en.name}: ${en.desc}`, textX, y2+5, colW-iconW-8, 12);
+    y2+=28;
+
   }
 }
 function shade(hex,amt){ // naive shade
@@ -341,9 +356,11 @@ function drawBoss(b,theme){
   ctx.fillRect(x-4,y+6,4,4); ctx.fillRect(x+b.w,y+6,4,4);
   // head
   ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+4,y,b.w-8,4);
-  // HP bar
-  ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
-  ctx.fillStyle=theme.accent; ctx.fillRect(10,10,(b.hp/(b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
+  if(theme){
+    // HP bar
+    ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
+    ctx.fillStyle=theme.accent; ctx.fillRect(10,10,(b.hp/(b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
+  }
 }
 
 // UI Buttons (HTML overlay)
@@ -417,6 +434,7 @@ function updatePlay(){
       if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
     }
     level.bullets = level.bullets.filter(b=>!b.dead);
+
     for(const s of level.smokes){ s.t--; }
     level.smokes = level.smokes.filter(s=>s.t>0);
 
