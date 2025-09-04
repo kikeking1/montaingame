@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Retro 8‑bit Platformer</title>
+<style>
+  :root{--bg:#111;--fg:#eee;--accent:#6cf;--ui:#222;--btn:#2b2b2b;--btnh:#3b3b3b}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui}
+  #wrap{display:grid;place-items:center;height:100%;gap:12px}
+  #ui{display:flex;gap:8px;align-items:center;justify-content:center}
+  button{background:var(--btn);color:var(--fg);border:1px solid #444;padding:8px 14px;border-radius:10px;cursor:pointer}
+  button:hover{background:var(--btnh)}
+  #hud{position:absolute;inset:12px auto auto 12px;z-index:10;font-weight:600;text-shadow:0 1px 0 #000}
+  #status{position:absolute;inset:auto auto 12px 12px;opacity:.7}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;border-radius:12px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+  .hidden{display:none}
+</style>
+<body>
+<div id="wrap">
+  <div id="hud" class="hidden"></div>
+  <canvas id="c" width="320" height="180"></canvas>
+  <div id="status" class="hidden"></div>
+  <div id="ui"></div>
+</div>
+<script>
+/*
+  Retro 2D platformer in a single file (HTML+CSS+JS)
+  - Start screen
+  - Level map (mountain ascent)
+  - 3 levels: Urban, Mountain, Cave
+  - Enemies: punk-like mobs
+  - Pickups: gin (heal), coin (shields), lighter (ammo)
+  - Shields (max 3), Life (max 3)
+  - Ranged attack: smoke ball if ammo>0
+  - Boss per level with distinct pattern
+  - Trophy plant per level (green / orange / purple)
+  - Ending quote: "Extraño ha sido el viaje, más extraño es volver a la rutina"
+*/
+const W=320,H=180,SCALE=3; // canvas logical size
+const c=document.getElementById('c'), ctx=c.getContext('2d');
+const ui=document.getElementById('ui');
+const hud=document.getElementById('hud');
+const statusBox=document.getElementById('status');
+let keys={}, pressed={};
+addEventListener('keydown',e=>{keys[e.key]=true});
+addEventListener('keyup',e=>{keys[e.key]=false; pressed[e.key]=false});
+
+// Simple RNG
+const rng=(()=>{let s=1234567;return()=> (s=(s*16807)%2147483647)/2147483647})();
+
+// Game state
+const state={
+  screen:'start', // start|map|play|ending
+  level:0, // 0..2
+  trophies:[false,false,false],
+  lives:3, shields:0, coins:0, ammo:0, // ammo from lighters
+};
+
+// Camera
+let camX=0;
+
+// Physics
+const G=0.25, JUMP=-4.5, SPEED=1.3, MAX_FALL=5;
+
+// Level definitions
+const themes=[
+  { name:'Nivel 1 — Urbano', bg:'#1a2230', ground:'#2c3b50', accent:'#86e1ff', boss:'arena', trophy:'verde' },
+  { name:'Nivel 2 — Montaña', bg:'#142318', ground:'#2d4a2a', accent:'#b6ffa3', boss:'salchicha', trophy:'naranja' },
+  { name:'Nivel 3 — Cueva', bg:'#1a141e', ground:'#3c293f', accent:'#d8a6ff', boss:'cerdo', trophy:'morada' },
+];
+
+// Simple tile map generator per level (platforms array)
+function buildLevel(lv){
+  const platforms=[]; // rects {x,y,w,h}
+  // base floor
+  platforms.push({x:-50,y:160,w:2000,h:20});
+  // some steps
+  for(let i=0;i<15;i++){
+    const x=60+i*90+ (lv*10);
+    const y=140 - Math.floor(i%3)*20 - lv*5;
+    platforms.push({x,y,w:50,h:6});
+  }
+  // boss arena platform
+  platforms.push({x:1500,y:120 - lv*5,w:120,h:6});
+  return platforms;
+}
+
+// Entities
+function mkPlayer(){return {x:10,y:140,w:10,h:14,vx:0,vy:0,onGround:false,dir:1, inv:0}} // inv frames
+function mkEnemy(x,y){return {x,y,w:10,h:14,vx:(rng()<.5?-0.6:0.6),type:'punk',alive:true}}
+function mkPickup(x,y,kind){return {x,y,w:6,h:6,kind,used:false}}
+function mkBullet(x,y,dir){return {x,y,w:6,h:4,vx:dir*2.2,dead:false}}
+
+function mkBoss(level){
+  if(level===0){ // sand eater: spits sand blobs arcs
+    return {x:1520,y:100,w:20,h:18,hp:6, type:'arena', cd:0, phase:0, vx:0}
+  } else if(level===1){ // sausage spitter: straight projectiles
+    return {x:1520,y:100,w:20,h:18,hp:7, type:'salchicha', cd:0, phase:0, vx:0}
+  } else { // boar: full-screen charges
+    return {x:1520,y:100,w:24,h:16,hp:8, type:'cerdo', cd:90, phase:0, vx:0}
+  }
+}
+
+// Level runtime objects
+let level={ platforms:[], enemies:[], pickups:[], bullets:[], boss:null, goal:null, player:null, bossShots:[], cleared:false };
+
+function resetRuntime(){
+  level.platforms=buildLevel(state.level);
+  level.enemies=[]; level.pickups=[]; level.bullets=[]; level.bossShots=[];
+  // populate enemies
+  for(let i=0;i<8;i++){
+    const x=120+i*120, y=140-(i%3)*20 - state.level*5;
+    level.enemies.push(mkEnemy(x,y-14));
+  }
+  // pickups spread
+  const loot=['gin','coin','lighter','coin','gin','coin'];
+  loot.forEach((k,i)=>{
+    const x=140+i*180, y=130-(i%2)*20 - state.level*5;
+    level.pickups.push(mkPickup(x,y,k));
+  });
+  level.boss=mkBoss(state.level);
+  level.goal=null; level.cleared=false; camX=0;
+  level.player=mkPlayer();
+}
+
+// Simple AABB collision
+function aabb(a,b){return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y}
+
+// Resolve platforms (only vertical/horizontal simple)
+function resolvePlatforms(obj){
+  obj.onGround=false;
+  for(const p of level.platforms){
+    if(aabb(obj,p)){
+      // Determine smallest axis resolution
+      const dx=(obj.x+obj.w/2)-(p.x+p.w/2);
+      const dy=(obj.y+obj.h/2)-(p.y+p.h/2);
+      const ox=(obj.w/2+p.w/2)-Math.abs(dx);
+      const oy=(obj.h/2+p.h/2)-Math.abs(dy);
+      if(ox<oy){ // resolve x
+        obj.x += dx>0? ox : -ox; obj.vx=0;
+      } else { // resolve y
+        obj.y += dy>0? oy : -oy; obj.vy=0;
+        if(dy<0) obj.onGround=true; // standing on top
+      }
+    }
+  }
+}
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+
+// Input edge helper
+function justPressed(k){return keys[k] && !pressed[k] && (pressed[k]=true)
+}
+
+// Game screens
+function drawStart(){
+  ctx.fillStyle='#101018'; ctx.fillRect(0,0,W,H);
+  drawTitle('RETRO ASCENSO');
+  drawSub('Plataformas 8-bit · JS+Canvas');
+  renderButtons([
+    {label:'Comenzar', onClick:()=>{state.screen='map'; renderUIButtons()}},
+    {label:'Controles: ←/→ moverse · Espacio saltar · F disparar', small:true}
+  ]);
+}
+
+function drawMap(){
+  const t=themes[state.trophies.filter(Boolean).length];
+  ctx.fillStyle='#0e141a'; ctx.fillRect(0,0,W,H);
+  // simple mountain triangle
+  ctx.fillStyle='#223'; triangle(W/2,H-10, 40, -120);
+  // base, mid, top markers
+  const pts=[{x:W/2, y:H-20},{x:W/2-14, y:H-70},{x:W/2, y:H-120}];
+  for(let i=0;i<3;i++){
+    ctx.fillStyle= i===state.level? '#fff' : '#667';
+    ctx.fillRect(pts[i].x-3, pts[i].y-3, 6,6);
+    // trophy indicator
+    if(state.trophies[i]){ ctx.fillStyle=['#5f5','#fa3','#a5f'][i]; ctx.fillRect(pts[i].x-2, pts[i].y-10,4,4); }
+  }
+  drawTitle('Selecciona nivel');
+  drawSub(`Nivel actual: ${state.level+1} · ${themes[state.level].name}`);
+  renderButtons([
+    {label:'Jugar nivel', onClick:()=>{startLevel()}},
+    {label:'← Nivel', onClick:()=>{state.level=(state.level+2)%3; renderUIButtons()}},
+    {label:'Nivel →', onClick:()=>{state.level=(state.level+1)%3; renderUIButtons()}},
+    {label:'Inicio', onClick:()=>{state.screen='start'; renderUIButtons()}},
+  ]);
+}
+
+function startLevel(){
+  resetRuntime(); state.screen='play';
+  hud.classList.remove('hidden'); statusBox.classList.remove('hidden');
+  renderUIButtons();
+}
+
+function drawPlay(){
+  const theme=themes[state.level];
+  // parallax bg
+  ctx.fillStyle=theme.bg; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=shade(theme.bg,0.3); for(let i=0;i<5;i++){ ctx.fillRect(i*80 - ((camX*0.3)%80), 20+i*10, 60,2) }
+  // ground/platforms
+  ctx.fillStyle=theme.ground; for(const p of level.platforms){ ctx.fillRect(p.x-camX,p.y,p.w,p.h) }
+  // pickups
+  for(const it of level.pickups){ if(it.used) continue; drawPickup(it) }
+  // enemies
+  ctx.fillStyle='#d66'; for(const e of level.enemies){ if(!e.alive) continue; ctx.fillRect(e.x-camX,e.y,e.w,e.h) }
+  // boss
+  if(level.boss && level.boss.hp>0){ drawBoss(level.boss, theme) }
+  // bullets
+  ctx.fillStyle=theme.accent; for(const b of level.bullets){ ctx.fillRect(b.x-camX,b.y,b.w,b.h) }
+  // boss projectiles
+  for(const s of level.bossShots){ ctx.fillStyle=s.col||'#cc4'; ctx.fillRect(s.x-camX,s.y,s.w,s.h) }
+  // player
+  drawPlayer(level.player);
+  // HUD
+  hud.innerHTML = `♥ ${'❤'.repeat(state.lives)}${'♡'.repeat(3-state.lives)} &nbsp; 🛡️ ${'⬡'.repeat(state.shields)}${'⋯'.repeat(3-state.shields)} &nbsp; 🪙 ${state.coins} &nbsp; 🔥 ${state.ammo} &nbsp; Nivel ${state.level+1}`;
+  statusBox.innerHTML = themes[state.level].name;
+}
+
+function drawEnding(){
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  drawTitle('¡Has llegado a la cima!');
+  drawSub('“Extraño ha sido el viaje, más extraño es volver a la rutina”');
+  renderButtons([
+    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; renderUIButtons();}},
+  ]);
+}
+
+// Rendering helpers
+function tri(a,b,c){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.lineTo(c.x,c.y);ctx.closePath()}
+function triangle(x,y, w,h){tri({x:x-w,y:y},{x:x+w,y:y},{x:x,y:y+h}); ctx.fill()}
+function drawTitle(t){ ctx.fillStyle='#fff'; ctx.font='bold 16px system-ui'; ctx.textAlign='center'; ctx.fillText(t,W/2,24) }
+function drawSub(t){ ctx.fillStyle='#bbb'; ctx.font='12px system-ui'; ctx.textAlign='center'; wrapText(t,W/2,40, 280, 14) }
+function wrapText(txt,x,y,maxW,lh){ const words=txt.split(' '); let line=''; for(let i=0;i<words.length;i++){ const test=line+words[i]+' '; if(ctx.measureText(test).width>maxW && i>0){ ctx.fillText(line,x,y); line=words[i]+' '; y+=lh; } else line=test } ctx.fillText(line,x,y) }
+function shade(hex,amt){ // naive shade
+  const c=parseInt(hex.slice(1),16);
+  let r=(c>>16)&255,g=(c>>8)&255,b=c&255;
+  r=Math.round(r+(amt*255)); g=Math.round(g+(amt*255)); b=Math.round(b+(amt*255));
+  r=clamp(r,0,255); g=clamp(g,0,255); b=clamp(b,0,255);
+  return `rgb(${r},${g},${b})`;
+}
+
+function drawPlayer(p){
+  ctx.fillStyle='#6cf'; ctx.fillRect(p.x-camX,p.y,p.w,p.h);
+  // head
+  ctx.fillStyle='#fff'; ctx.fillRect(p.x+2-camX,p.y-4,6,4);
+  // direction nose
+  ctx.fillStyle='#9cf'; ctx.fillRect(p.x + (p.dir>0?8:-2) -camX, p.y-2,2,2)
+}
+
+function drawPickup(it){
+  const x=it.x-camX,y=it.y;
+  if(it.kind==='gin'){ ctx.fillStyle='#7cf'; ctx.fillRect(x,y,6,6); ctx.fillStyle='#9df'; ctx.fillRect(x+2,y-2,2,2) }
+  if(it.kind==='coin'){ ctx.fillStyle='#fc3'; ctx.fillRect(x,y,6,6) }
+  if(it.kind==='lighter'){ ctx.fillStyle='#f66'; ctx.fillRect(x,y,6,6); ctx.fillStyle='#ff9'; ctx.fillRect(x+2,y-2,2,2) }
+}
+
+function drawBoss(b,theme){
+  if(b.type==='arena'){
+    ctx.fillStyle='#caa';
+  } else if(b.type==='salchicha'){
+    ctx.fillStyle='#a53';
+  } else {
+    ctx.fillStyle='#f7a';
+  }
+  ctx.fillRect(b.x-camX,b.y,b.w,b.h);
+  // HP bar
+  ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
+  ctx.fillStyle=theme.accent; ctx.fillRect(10,10, (b.hp/ (b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
+}
+
+// UI Buttons (HTML overlay)
+function renderButtons(list){
+  ui.innerHTML='';
+  list.forEach(it=>{
+    const btn=document.createElement('button');
+    btn.textContent=it.label; if(it.small){btn.style.opacity='.8'; btn.style.fontSize='12px'}
+    if(it.onClick) btn.onclick=it.onClick; else btn.disabled=true;
+    ui.appendChild(btn);
+  });
+}
+function renderUIButtons(){
+  if(state.screen==='start') return renderButtons([]);
+  if(state.screen==='map') return; // buttons already drawn in drawMap
+  if(state.screen==='play') return renderButtons([
+    {label:'Salir', onClick:()=>{state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden'); renderUIButtons()}},
+  ]);
+  if(state.screen==='ending') return; // ending screen buttons drawn there
+}
+
+// Gameplay update
+function updatePlay(){
+  const p=level.player; // input
+  p.vx = (keys['ArrowRight']?SPEED:0) - (keys['ArrowLeft']?SPEED:0);
+  if(p.vx!==0) p.dir = p.vx>0?1:-1;
+  if(justPressed(' ') && p.onGround){ p.vy = JUMP; }
+  if(justPressed('f') || justPressed('F')){ if(state.ammo>0){ level.bullets.push(mkBullet(p.x+(p.dir>0?10:-2), p.y+4, p.dir)); state.ammo--; } }
+  // physics
+  p.vy = clamp(p.vy+G, -9, MAX_FALL);
+  p.x += p.vx; resolvePlatforms(p);
+  p.y += p.vy; resolvePlatforms(p);
+  camX = clamp(p.x-80, 0, 2000-W);
+  if(p.inv>0) p.inv--;
+
+  // enemies AI
+  for(const e of level.enemies){ if(!e.alive) continue; e.x += e.vx; // bounce on platform edges
+    let onPlat=false; for(const pl of level.platforms){ if(e.x>pl.x-2 && e.x<pl.x+pl.w+2 && Math.abs(e.y+e.h - pl.y)<2){ onPlat=true; break } }
+    if(!onPlat || rng()<.01) e.vx*=-1;
+    if(aabb(p,e)) hurtPlayer();
+  }
+
+  // pickups
+  for(const it of level.pickups){ if(it.used) continue; if(aabb(p,it)){
+    it.used=true;
+    if(it.kind==='gin'){ if(state.lives<3) state.lives++; }
+    if(it.kind==='coin'){ state.coins++; if(state.shields<3) state.shields++; }
+    if(it.kind==='lighter'){ state.ammo++; }
+  }}
+
+  // bullets
+  for(const b of level.bullets){ if(b.dead) continue; b.x += b.vx; if(b.x<camX-20||b.x>camX+W+20) b.dead=true; // hit enemies or boss
+    for(const e of level.enemies){ if(!e.alive) continue; if(aabb(b,e)){ e.alive=false; b.dead=true; break } }
+    if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
+  }
+  level.bullets = level.bullets.filter(b=>!b.dead);
+
+  // boss logic
+  const B=level.boss; if(B && B.hp>0){
+    B.cd--; if(B.type==='arena'){
+      // spit sand blobs (arcs)
+      if(B.cd<=0){ B.cd=70; for(let i=0;i<3;i++){ level.bossShots.push({x:B.x-2, y:B.y+4, w:4,h:3, vx:-1.2-0.2*i, vy:-2-0.4*i, g:0.08, col:'#d6c18f'})}}
+    } else if(B.type==='salchicha'){
+      if(B.cd<=0){ B.cd=60; for(let i=0;i<4;i++){ level.bossShots.push({x:B.x-2,y:B.y+6,w:5,h:3, vx:-2-(i*0.25), vy:(i-1.5)*0.3, g:0, col:'#d67'})}}
+    } else { // boar charges
+      if(B.cd<=0){ B.cd=140; B.vx = -3.2; }
+      B.x += B.vx; if(B.x<camX-40){ B.vx=0; B.x=1520 }
+    }
+  }
+  // boss projectiles update
+  for(const s of level.bossShots){ s.x+=s.vx; s.y+=s.vy; s.vy+=s.g||0; if(aabb(p,s)) { s.dead=true; hurtPlayer(); } }
+  level.bossShots=level.bossShots.filter(s=> s.x>camX-30 && s.x<camX+W+30 && s.y<H && !s.dead);
+
+  // player vs boss body
+  if(B && B.hp>0 && aabb(level.player,B)) hurtPlayer();
+
+  // victory -> spawn trophy and exit
+  if(B && B.hp<=0 && !level.cleared){ level.cleared=true; level.goal={x:B.x+10,y:B.y-8,w:6,h:6, col:['#5f5','#fa3','#a5f'][state.level]}; }
+  if(level.cleared){
+    // draw goal handled in draw (as part of pickups? we'll draw here)
+    if(level.goal){ ctx.fillStyle=level.goal.col; ctx.fillRect(level.goal.x-camX, level.goal.y, 6,6); if(aabb(level.player,level.goal)){ state.trophies[state.level]=true; nextAfterClear(); }}
+  }
+}
+
+function hurtPlayer(){
+  const p=level.player; if(p.inv>0) return;
+  if(state.shields>0){ state.shields--; p.inv=40; return; }
+  state.lives--; p.inv=60;
+  if(state.lives<=0){ // reset level
+    state.lives=3; state.shields=0; state.ammo=0; resetRuntime();
+  }
+}
+
+function nextAfterClear(){
+  // go to map; if all trophies -> ending
+  state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden');
+  if(state.trophies.every(Boolean)){
+    state.screen='ending';
+  }
+  renderUIButtons();
+}
+
+// Main loop
+function loop(){
+  if(state.screen==='start') drawStart();
+  else if(state.screen==='map') drawMap();
+  else if(state.screen==='play'){ drawPlay(); updatePlay(); }
+  else if(state.screen==='ending') drawEnding();
+  requestAnimationFrame(loop);
+}
+
+// Fit canvas
+function fit(){ const ww=innerWidth, hh=innerHeight; const s=Math.floor(Math.min(ww/W, hh/H)); c.style.width=(W*s)+'px'; c.style.height=(H*s)+'px'; }
+addEventListener('resize',fit); fit();
+
+// Start
+state.screen='start'; renderUIButtons(); loop();
+</script>
+</html>
