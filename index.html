@@ -2,7 +2,7 @@
 <html lang="es">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Retro 8‑bit Platformer</title>
+<title>Subida al monte</title>
 <style>
   :root{--bg:#111;--fg:#eee;--accent:#6cf;--ui:#222;--btn:#2b2b2b;--btnh:#3b3b3b}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui}
@@ -117,7 +117,6 @@ function mkBoss(level, arena){
 // Level runtime objects
 let level={ platforms:[], enemies:[], pickups:[], bullets:[], smokes:[], boss:null, goal:null, player:null, bossShots:[], cleared:false, arena:null };
 
-
 function resetRuntime(){
   const map=buildLevel(state.level);
   level.platforms=map.platforms; levelLength=map.len;
@@ -181,8 +180,10 @@ function justPressed(k){return keys[k] && !pressed[k] && (pressed[k]=true)
 // Game screens
 function drawStart(){
   ctx.fillStyle='#101018'; ctx.fillRect(0,0,W,H);
-  drawTitle('RETRO ASCENSO');
-  drawSub('Plataformas 8-bit · JS+Canvas');
+  camX=0;
+  drawTitle('SUBIDA AL MONTE');
+  drawSub('Plataforma 8-bit');
+  drawStartInfo();
 }
 
 function drawMap(){
@@ -253,6 +254,38 @@ function triangle(x,y, w,h){tri({x:x-w,y:y},{x:x+w,y:y},{x:x,y:y+h}); ctx.fill()
 function drawTitle(t){ ctx.fillStyle='#fff'; ctx.font='bold 16px system-ui'; ctx.textAlign='center'; ctx.fillText(t,W/2,24) }
 function drawSub(t){ ctx.fillStyle='#bbb'; ctx.font='12px system-ui'; ctx.textAlign='center'; wrapText(t,W/2,40, 280, 14) }
 function wrapText(txt,x,y,maxW,lh){ const words=txt.split(' '); let line=''; for(let i=0;i<words.length;i++){ const test=line+words[i]+' '; if(ctx.measureText(test).width>maxW && i>0){ ctx.fillText(line,x,y); line=words[i]+' '; y+=lh; } else line=test } ctx.fillText(line,x,y) }
+function drawStartInfo(){
+  const x=20; let y=60;
+  ctx.textAlign='left';
+  ctx.fillStyle='#fff'; ctx.font='bold 12px system-ui';
+  ctx.fillText('Objetos', x, y);
+  y+=10;
+  const items=[
+    {kind:'coin', name:'Moneda', desc:'Cuando un punky se te acerca puedes darle un euro para evitar la puñalada.'},
+    {kind:'gin', name:'Ginebra', desc:'Bebida que te revitaliza y recupera energia.'},
+    {kind:'lighter', name:'Mechero', desc:'Con esto podrás encender tus canutos y ennubar a los punkys.'},
+  ];
+  for(const it of items){
+    drawPickup({x, y, kind:it.kind});
+    ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
+    wrapText(`${it.name}: ${it.desc}`, x+12, y+5, 280, 12);
+    y+=32;
+  }
+  ctx.fillStyle='#fff'; ctx.font='bold 12px system-ui';
+  ctx.fillText('Enemigos', x, y);
+  y+=10;
+  const enemies=[
+    {name:'Punky', desc:'Tipo mal encarado que te pinchara a la minima de cambio.'},
+    {name:'Cometierra', desc:'Monstruo de las profundidades que devora y regurgita tierra.'},
+    {name:'Comesalchichas', desc:'Capaz de devorar una ingente cantidad de salchichas a la vez.'},
+    {name:'El cerdo', desc:'Te perseguira para embestirte en cuanto te vea.'},
+  ];
+  for(const en of enemies){
+    ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
+    wrapText(`${en.name}: ${en.desc}`, x, y, 280, 12);
+    y+=24;
+  }
+}
 function shade(hex,amt){ // naive shade
   const c=parseInt(hex.slice(1),16);
   let r=(c>>16)&255,g=(c>>8)&255,b=c&255;
@@ -384,8 +417,6 @@ function updatePlay(){
       if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
     }
     level.bullets = level.bullets.filter(b=>!b.dead);
-
-
     for(const s of level.smokes){ s.t--; }
     level.smokes = level.smokes.filter(s=>s.t>0);
 
