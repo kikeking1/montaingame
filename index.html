@@ -2,7 +2,7 @@
 <html lang="es">
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Retro 8‑bit Platformer</title>
+<title>Subida al monte</title>
 <style>
   :root{--bg:#111;--fg:#eee;--accent:#6cf;--ui:#222;--btn:#2b2b2b;--btnh:#3b3b3b}
   html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui}
@@ -115,12 +115,12 @@ function mkBoss(level, arena){
 }
 
 // Level runtime objects
-let level={ platforms:[], enemies:[], pickups:[], bullets:[], boss:null, goal:null, player:null, bossShots:[], cleared:false };
+let level={ platforms:[], enemies:[], pickups:[], bullets:[], smokes:[], boss:null, goal:null, player:null, bossShots:[], cleared:false, arena:null };
 
 function resetRuntime(){
   const map=buildLevel(state.level);
   level.platforms=map.platforms; levelLength=map.len;
-  level.enemies=[]; level.pickups=[]; level.bullets=[]; level.bossShots=[];
+  level.enemies=[]; level.pickups=[]; level.bullets=[]; level.bossShots=[]; level.smokes=[];
   // populate enemies along the stage
   const enemyCount=Math.floor(levelLength/150);
   for(let i=0;i<enemyCount;i++){
@@ -138,9 +138,12 @@ function resetRuntime(){
     level.pickups.push(mkPickup(x,y,kind));
   }
   const arena=level.platforms[level.platforms.length-1];
-  level.boss=mkBoss(state.level,arena);
-  // ensure boss rests exactly on its arena platform
-  level.boss.y = arena.y - level.boss.h;
+  level.arena=arena;
+  level.boss = state.level===2 ? null : mkBoss(state.level,arena);
+  if(level.boss){
+    // ensure boss rests exactly on its arena platform
+    level.boss.y = arena.y - level.boss.h;
+  }
   level.goal=null; level.cleared=false; camX=0;
   level.player=mkPlayer();
 }
@@ -177,8 +180,10 @@ function justPressed(k){return keys[k] && !pressed[k] && (pressed[k]=true)
 // Game screens
 function drawStart(){
   ctx.fillStyle='#101018'; ctx.fillRect(0,0,W,H);
-  drawTitle('RETRO ASCENSO');
-  drawSub('Plataformas 8-bit · JS+Canvas');
+  camX=0;
+  drawTitle('SUBIDA AL MONTE');
+  drawSub('Plataforma 8-bit');
+  drawStartInfo();
 }
 
 function drawMap(){
@@ -218,6 +223,14 @@ function drawPlay(){
   if(level.boss && level.boss.hp>0){ drawBoss(level.boss, theme) }
   // bullets
   ctx.fillStyle=theme.accent; for(const b of level.bullets){ ctx.fillRect(b.x-camX,b.y,b.w,b.h) }
+  // smoke effects
+  for(const s of level.smokes){
+    const alpha=s.t/20;
+    ctx.fillStyle=`rgba(200,200,200,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(s.x-camX+5, s.y+7, (20-s.t)/2+4, 0, Math.PI*2);
+    ctx.fill();
+  }
   // boss projectiles
   for(const s of level.bossShots){ ctx.fillStyle=s.col||'#cc4'; ctx.fillRect(s.x-camX,s.y,s.w,s.h) }
   // goal plant when boss defeated
@@ -241,6 +254,50 @@ function triangle(x,y, w,h){tri({x:x-w,y:y},{x:x+w,y:y},{x:x,y:y+h}); ctx.fill()
 function drawTitle(t){ ctx.fillStyle='#fff'; ctx.font='bold 16px system-ui'; ctx.textAlign='center'; ctx.fillText(t,W/2,24) }
 function drawSub(t){ ctx.fillStyle='#bbb'; ctx.font='12px system-ui'; ctx.textAlign='center'; wrapText(t,W/2,40, 280, 14) }
 function wrapText(txt,x,y,maxW,lh){ const words=txt.split(' '); let line=''; for(let i=0;i<words.length;i++){ const test=line+words[i]+' '; if(ctx.measureText(test).width>maxW && i>0){ ctx.fillText(line,x,y); line=words[i]+' '; y+=lh; } else line=test } ctx.fillText(line,x,y) }
+function drawStartInfo(){
+  const colW=130, gap=20;
+  const leftX=20, rightX=leftX+colW+gap;
+  const top=50;
+  ctx.textAlign='left';
+  ctx.fillStyle='#fff'; ctx.font='bold 12px system-ui';
+  ctx.fillText('Objetos', leftX, top);
+  ctx.fillText('Enemigos', rightX, top);
+  const items=[
+    {kind:'coin', name:'Moneda', desc:'Cuando un punky se te acerca puedes darle un euro para evitar la puñalada.'},
+    {kind:'gin', name:'Ginebra', desc:'Bebida que te revitaliza y recupera energia.'},
+    {kind:'lighter', name:'Mechero', desc:'Con esto podrás encender tus canutos y ennubar a los punkys.'},
+  ];
+  let y1=top+10;
+  for(const it of items){
+    drawPickup({x:leftX, y:y1, kind:it.kind});
+    ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
+    wrapText(`${it.name}: ${it.desc}`, leftX+12, y1+5, colW-20, 12);
+    y1+=28;
+  }
+  const enemies=[
+    {kind:'punk', name:'Punky', desc:'Tipo mal encarado que te pinchara a la minima de cambio.'},
+    {kind:'arena', name:'Cometierra', desc:'Monstruo de las profundidades que devora y regurgita tierra.'},
+    {kind:'salchicha', name:'Comesalchichas', desc:'Capaz de devorar una ingente cantidad de salchichas a la vez.'},
+    {kind:'cerdo', name:'El cerdo', desc:'Te perseguira para embestirte en cuanto te vea.'},
+  ];
+  let y2=top+10;
+  for(const en of enemies){
+    let iconW;
+    if(en.kind==='punk'){
+      drawEnemy({x:rightX, y:y2, w:10, h:14, vx:0});
+      iconW=14;
+    } else {
+      const bW=en.kind==='cerdo'?24:20;
+      const bH=en.kind==='cerdo'?16:18;
+      drawBoss({x:rightX+4, y:y2, w:bW, h:bH, type:en.kind, hp:1});
+      iconW=bW+8;
+    }
+    ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
+    const textX=rightX+iconW+4;
+    wrapText(`${en.name}: ${en.desc}`, textX, y2+5, colW-iconW-8, 12);
+    y2+=28;
+  }
+}
 function shade(hex,amt){ // naive shade
   const c=parseInt(hex.slice(1),16);
   let r=(c>>16)&255,g=(c>>8)&255,b=c&255;
@@ -251,14 +308,18 @@ function shade(hex,amt){ // naive shade
 
 function drawPlayer(p){
   const x=p.x-camX, y=p.y;
+  const hurt = p.inv>0 && Math.floor(p.inv/5)%2===0;
+  const legCol = hurt?'#a11':'#444';
+  const bodyCol = hurt?'#f44':'#6cf';
+  const skinCol = hurt?'#f66':'#ffd7b5';
   // legs
-  ctx.fillStyle='#444'; ctx.fillRect(x,y+10,10,4);
+  ctx.fillStyle=legCol; ctx.fillRect(x,y+10,10,4);
   // body
-  ctx.fillStyle='#6cf'; ctx.fillRect(x,y+4,10,6);
+  ctx.fillStyle=bodyCol; ctx.fillRect(x,y+4,10,6);
   // arms
   ctx.fillRect(x-2,y+5,2,3); ctx.fillRect(x+10,y+5,2,3);
   // head
-  ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+2,y-4,6,4);
+  ctx.fillStyle=skinCol; ctx.fillRect(x+2,y-4,6,4);
   // eyes
   ctx.fillStyle='#000'; ctx.fillRect(x+(p.dir>0?6:2),y-2,2,2);
 }
@@ -292,9 +353,11 @@ function drawBoss(b,theme){
   ctx.fillRect(x-4,y+6,4,4); ctx.fillRect(x+b.w,y+6,4,4);
   // head
   ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+4,y,b.w-8,4);
-  // HP bar
-  ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
-  ctx.fillStyle=theme.accent; ctx.fillRect(10,10,(b.hp/(b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
+  if(theme){
+    // HP bar
+    ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
+    ctx.fillStyle=theme.accent; ctx.fillRect(10,10,(b.hp/(b.type==='arena'?6:b.type==='salchicha'?7:8))*100,4);
+  }
 }
 
 // UI Buttons (HTML overlay)
@@ -363,16 +426,24 @@ function updatePlay(){
   }}
 
   // bullets
-  for(const b of level.bullets){ if(b.dead) continue; b.x += b.vx; if(b.x<camX-20||b.x>camX+W+20) b.dead=true; // hit enemies or boss
-    for(const e of level.enemies){ if(!e.alive) continue; if(aabb(b,e)){ e.alive=false; b.dead=true; break } }
-    if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
-  }
-  level.bullets = level.bullets.filter(b=>!b.dead);
+    for(const b of level.bullets){ if(b.dead) continue; b.x += b.vx; if(b.x<camX-20||b.x>camX+W+20) b.dead=true; // hit enemies or boss
+      for(const e of level.enemies){ if(!e.alive) continue; if(aabb(b,e)){ e.alive=false; b.dead=true; level.smokes.push({x:e.x,y:e.y,t:20}); break } }
+      if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
+    }
+    level.bullets = level.bullets.filter(b=>!b.dead);
 
+    for(const s of level.smokes){ s.t--; }
+    level.smokes = level.smokes.filter(s=>s.t>0);
+
+  // boss spawn for level 3 when player reaches arena
+  if(state.level===2 && !level.boss && p.x+80 >= level.arena.x){
+    level.boss = mkBoss(2, level.arena);
+    level.boss.y = level.arena.y - level.boss.h;
+  }
   // boss logic
   const B=level.boss; if(B && B.hp>0){
     B.cd--;
-    if(B.type==='arena' || B.type==='salchicha'){
+      if(B.type==='arena' || B.type==='salchicha'){
       B.x += B.vx;
       if(B.x<B.left || B.x>B.right){ B.vx*=-1; B.x=clamp(B.x,B.left,B.right); }
       if(B.type==='arena'){
@@ -380,11 +451,16 @@ function updatePlay(){
       } else {
         if(B.cd<=0){ B.cd=60; for(let i=0;i<4;i++){ level.bossShots.push({x:B.x-2,y:B.y+6,w:5,h:3,vx:-2-(i*0.25),vy:(i-1.5)*0.3,g:0,col:'#d67'})}}
       }
-    } else { // boar charges
-      if(B.cd<=0){ B.cd=140; B.vx=-3.2; }
-      B.x += B.vx;
-      if(B.x<camX-40){ B.vx=0; B.x=B.startX; }
-    }
+      } else { // boar charges
+        const inView = B.x+B.w>camX && B.x<camX+W;
+        if(!inView){ B.vx=0; }
+        else if(B.vx===0){ B.vx=-3.2; }
+        B.x += B.vx;
+        if(B.x<=camX || B.x+B.w>=camX+W){
+          B.vx*=-1;
+          B.x=clamp(B.x, camX, camX+W-B.w);
+        }
+      }
   }
   // boss projectiles update
   for(const s of level.bossShots){ s.x+=s.vx; s.y+=s.vy; s.vy+=s.g||0; if(aabb(p,s)) { s.dead=true; hurtPlayer(); } }
