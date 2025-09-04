@@ -129,6 +129,7 @@ function resetRuntime(){
   }
   const arena=level.platforms[level.platforms.length-1];
   level.boss=mkBoss(state.level,arena);
+
   level.goal=null; level.cleared=false; camX=0;
   level.player=mkPlayer();
 }
