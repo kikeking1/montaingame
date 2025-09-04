@@ -53,7 +53,7 @@ const state={
   screen:'start', // start|map|play|ending
   level:0, // 0..2
   trophies:[false,false,false],
-  lives:3, shields:0, coins:0, ammo:0, // ammo from lighters
+  lives:3, shields:0, coins:0, ammo:0, kills:0, // ammo from lighters
 };
 
 // Camera
@@ -238,7 +238,7 @@ function drawPlay(){
   // player
   drawPlayer(level.player);
   // HUD
-  hud.innerHTML = `♥ ${'❤'.repeat(state.lives)}${'♡'.repeat(3-state.lives)} &nbsp; 🛡️ ${'⬡'.repeat(state.shields)}${'⋯'.repeat(3-state.shields)} &nbsp; 🪙 ${state.coins} &nbsp; 🔥 ${state.ammo} &nbsp; Nivel ${state.level+1}`;
+  hud.innerHTML = `♥ ${'❤'.repeat(state.lives)}${'♡'.repeat(3-state.lives)} &nbsp; 🛡️ ${'⬡'.repeat(state.shields)}${'⋯'.repeat(3-state.shields)} &nbsp; 🪙 ${state.coins} &nbsp; ☠️ ${state.kills} &nbsp; 🔥 ${state.ammo} &nbsp; Nivel ${state.level+1}`;
   statusBox.innerHTML = themes[state.level].name;
 }
 
@@ -272,8 +272,8 @@ function drawStartInfo(){
   let y1=top+10;
   for(const it of items){
     drawPickup({x:leftX, y:y1, kind:it.kind});
-    ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
-    wrapText(`${it.name}: ${it.desc}`, leftX+12, y1+5, colW-20, 12);
+    ctx.fillStyle='#bbb'; ctx.font='8px system-ui';
+    wrapText(`${it.name}: ${it.desc}`, leftX+12, y1+5, colW-20, 10);
     y1+=28;
   }
   const enemies=[
@@ -294,9 +294,9 @@ function drawStartInfo(){
       drawBoss({x:rightX+4, y:y2, w:bW, h:bH, type:en.kind, hp:1});
       iconW=bW+8;
     }
-    ctx.fillStyle='#bbb'; ctx.font='10px system-ui';
+    ctx.fillStyle='#bbb'; ctx.font='8px system-ui';
     const textX=rightX+iconW+4;
-    wrapText(`${en.name}: ${en.desc}`, textX, y2+5, colW-iconW-8, 12);
+    wrapText(`${en.name}: ${en.desc}`, textX, y2+5, colW-iconW-8, 10);
     y2+=28;
 
   }
@@ -388,7 +388,7 @@ function renderUIButtons(){
     {label:'Salir', onClick:()=>{state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden'); renderUIButtons();}},
   ]);
   if(state.screen==='ending') return renderButtons([
-    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; renderUIButtons();}},
+    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; state.kills=0; renderUIButtons();}},
   ]);
 }
 
@@ -430,7 +430,7 @@ function updatePlay(){
 
   // bullets
     for(const b of level.bullets){ if(b.dead) continue; b.x += b.vx; if(b.x<camX-20||b.x>camX+W+20) b.dead=true; // hit enemies or boss
-      for(const e of level.enemies){ if(!e.alive) continue; if(aabb(b,e)){ e.alive=false; b.dead=true; level.smokes.push({x:e.x,y:e.y,t:20}); break } }
+      for(const e of level.enemies){ if(!e.alive) continue; if(aabb(b,e)){ e.alive=false; b.dead=true; level.smokes.push({x:e.x,y:e.y,t:20}); state.kills++; break } }
       if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
     }
     level.bullets = level.bullets.filter(b=>!b.dead);
@@ -481,6 +481,7 @@ function updatePlay(){
 
 function hurtPlayer(){
   const p=level.player; if(p.inv>0) return;
+  if(state.coins>0){ state.coins--; }
   if(state.shields>0){ state.shields--; p.inv=40; return; }
   state.lives--; p.inv=60;
   if(state.lives<=0){ // reset level
