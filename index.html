@@ -57,7 +57,7 @@ const state={
 };
 
 // Camera
-let camX=0;
+let camX=0, levelLength=2000;
 
 // Physics
 const G=0.25, JUMP=-4.5, SPEED=1.3, MAX_FALL=5;
@@ -72,17 +72,19 @@ const themes=[
 // Simple tile map generator per level (platforms array)
 function buildLevel(lv){
   const platforms=[]; // rects {x,y,w,h}
-  // base floor
-  platforms.push({x:-50,y:160,w:2000,h:20});
-  // some steps
-  for(let i=0;i<15;i++){
-    const x=60+i*90+ (lv*10);
-    const y=140 - Math.floor(i%3)*20 - lv*5;
-    platforms.push({x,y,w:50,h:6});
+  const len=4000; // overall length per level
+  // base floor spanning the whole stage
+  platforms.push({x:-50,y:160,w:len,h:20});
+  // step platforms to traverse
+  const steps=40 + lv*5;
+  for(let i=0;i<steps;i++){
+    const x=80+i*90;
+    const y=140 - ((i+lv)% (3+lv))*20 - lv*5;
+    platforms.push({x,y,w:60,h:6});
   }
-  // boss arena platform
-  platforms.push({x:1500,y:120 - lv*5,w:120,h:6});
-  return platforms;
+  // boss arena platform near the end
+  platforms.push({x:len-160,y:120 - lv*5,w:120,h:6});
+  return {platforms,len};
 }
 
 // Entities
@@ -105,20 +107,28 @@ function mkBoss(level){
 let level={ platforms:[], enemies:[], pickups:[], bullets:[], boss:null, goal:null, player:null, bossShots:[], cleared:false };
 
 function resetRuntime(){
-  level.platforms=buildLevel(state.level);
+  const map=buildLevel(state.level);
+  level.platforms=map.platforms; levelLength=map.len;
   level.enemies=[]; level.pickups=[]; level.bullets=[]; level.bossShots=[];
-  // populate enemies
-  for(let i=0;i<8;i++){
-    const x=120+i*120, y=140-(i%3)*20 - state.level*5;
+  // populate enemies along the stage
+  const enemyCount=Math.floor(levelLength/150);
+  for(let i=0;i<enemyCount;i++){
+    const x=120+i*150;
+    const y=140-(i%4)*20 - state.level*5;
     level.enemies.push(mkEnemy(x,y-14));
   }
-  // pickups spread
-  const loot=['gin','coin','lighter','coin','gin','coin'];
-  loot.forEach((k,i)=>{
-    const x=140+i*180, y=130-(i%2)*20 - state.level*5;
-    level.pickups.push(mkPickup(x,y,k));
-  });
+  // pickups spread: mostly lighters, few coins/gin
+  const pickupCount=Math.floor(levelLength/120);
+  for(let i=0;i<pickupCount;i++){
+    const x=140+i*120;
+    const y=130-(i%2)*20 - state.level*5;
+    const r=rng();
+    const kind = r<0.6 ? 'lighter' : r<0.8 ? 'coin' : 'gin';
+    level.pickups.push(mkPickup(x,y,kind));
+  }
   level.boss=mkBoss(state.level);
+  level.boss.x = levelLength-180;
+  level.boss.startX = level.boss.x;
   level.goal=null; level.cleared=false; camX=0;
   level.player=mkPlayer();
 }
@@ -157,14 +167,9 @@ function drawStart(){
   ctx.fillStyle='#101018'; ctx.fillRect(0,0,W,H);
   drawTitle('RETRO ASCENSO');
   drawSub('Plataformas 8-bit · JS+Canvas');
-  renderButtons([
-    {label:'Comenzar', onClick:()=>{state.screen='map'; renderUIButtons()}},
-    {label:'Controles: ←/→ moverse · Espacio saltar · F disparar', small:true}
-  ]);
 }
 
 function drawMap(){
-  const t=themes[state.trophies.filter(Boolean).length];
   ctx.fillStyle='#0e141a'; ctx.fillRect(0,0,W,H);
   // simple mountain triangle
   ctx.fillStyle='#223'; triangle(W/2,H-10, 40, -120);
@@ -178,12 +183,6 @@ function drawMap(){
   }
   drawTitle('Selecciona nivel');
   drawSub(`Nivel actual: ${state.level+1} · ${themes[state.level].name}`);
-  renderButtons([
-    {label:'Jugar nivel', onClick:()=>{startLevel()}},
-    {label:'← Nivel', onClick:()=>{state.level=(state.level+2)%3; renderUIButtons()}},
-    {label:'Nivel →', onClick:()=>{state.level=(state.level+1)%3; renderUIButtons()}},
-    {label:'Inicio', onClick:()=>{state.screen='start'; renderUIButtons()}},
-  ]);
 }
 
 function startLevel(){
@@ -209,6 +208,8 @@ function drawPlay(){
   ctx.fillStyle=theme.accent; for(const b of level.bullets){ ctx.fillRect(b.x-camX,b.y,b.w,b.h) }
   // boss projectiles
   for(const s of level.bossShots){ ctx.fillStyle=s.col||'#cc4'; ctx.fillRect(s.x-camX,s.y,s.w,s.h) }
+  // goal plant when boss defeated
+  if(level.goal){ ctx.fillStyle=level.goal.col; ctx.fillRect(level.goal.x-camX, level.goal.y, level.goal.w, level.goal.h) }
   // player
   drawPlayer(level.player);
   // HUD
@@ -220,9 +221,6 @@ function drawEnding(){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
   drawTitle('¡Has llegado a la cima!');
   drawSub('“Extraño ha sido el viaje, más extraño es volver a la rutina”');
-  renderButtons([
-    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; renderUIButtons();}},
-  ]);
 }
 
 // Rendering helpers
@@ -279,12 +277,22 @@ function renderButtons(list){
   });
 }
 function renderUIButtons(){
-  if(state.screen==='start') return renderButtons([]);
-  if(state.screen==='map') return; // buttons already drawn in drawMap
-  if(state.screen==='play') return renderButtons([
-    {label:'Salir', onClick:()=>{state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden'); renderUIButtons()}},
+  if(state.screen==='start') return renderButtons([
+    {label:'Comenzar', onClick:()=>{state.screen='map'; renderUIButtons();}},
+    {label:'Controles: ←/→ moverse · Espacio saltar · F disparar', small:true},
   ]);
-  if(state.screen==='ending') return; // ending screen buttons drawn there
+  if(state.screen==='map') return renderButtons([
+    {label:'Jugar nivel', onClick:()=>{startLevel();}},
+    {label:'← Nivel', onClick:()=>{state.level=(state.level+2)%3; renderUIButtons();}},
+    {label:'Nivel →', onClick:()=>{state.level=(state.level+1)%3; renderUIButtons();}},
+    {label:'Inicio', onClick:()=>{state.screen='start'; renderUIButtons();}},
+  ]);
+  if(state.screen==='play') return renderButtons([
+    {label:'Salir', onClick:()=>{state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden'); renderUIButtons();}},
+  ]);
+  if(state.screen==='ending') return renderButtons([
+    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; renderUIButtons();}},
+  ]);
 }
 
 // Gameplay update
@@ -298,7 +306,7 @@ function updatePlay(){
   p.vy = clamp(p.vy+G, -9, MAX_FALL);
   p.x += p.vx; resolvePlatforms(p);
   p.y += p.vy; resolvePlatforms(p);
-  camX = clamp(p.x-80, 0, 2000-W);
+  camX = clamp(p.x-80, 0, levelLength-W);
   if(p.inv>0) p.inv--;
 
   // enemies AI
@@ -332,7 +340,7 @@ function updatePlay(){
       if(B.cd<=0){ B.cd=60; for(let i=0;i<4;i++){ level.bossShots.push({x:B.x-2,y:B.y+6,w:5,h:3, vx:-2-(i*0.25), vy:(i-1.5)*0.3, g:0, col:'#d67'})}}
     } else { // boar charges
       if(B.cd<=0){ B.cd=140; B.vx = -3.2; }
-      B.x += B.vx; if(B.x<camX-40){ B.vx=0; B.x=1520 }
+      B.x += B.vx; if(B.x<camX-40){ B.vx=0; B.x=B.startX }
     }
   }
   // boss projectiles update
@@ -344,9 +352,8 @@ function updatePlay(){
 
   // victory -> spawn trophy and exit
   if(B && B.hp<=0 && !level.cleared){ level.cleared=true; level.goal={x:B.x+10,y:B.y-8,w:6,h:6, col:['#5f5','#fa3','#a5f'][state.level]}; }
-  if(level.cleared){
-    // draw goal handled in draw (as part of pickups? we'll draw here)
-    if(level.goal){ ctx.fillStyle=level.goal.col; ctx.fillRect(level.goal.x-camX, level.goal.y, 6,6); if(aabb(level.player,level.goal)){ state.trophies[state.level]=true; nextAfterClear(); }}
+  if(level.cleared && level.goal){
+    if(aabb(level.player,level.goal)){ state.trophies[state.level]=true; nextAfterClear(); }
   }
 }
 
