@@ -87,6 +87,15 @@ function buildLevel(lv){
   return {platforms,len};
 }
 
+// find highest platform surface at a given x
+function groundY(x){
+  let y=200; // default far below stage
+  for(const p of level.platforms){
+    if(x>=p.x && x<=p.x+p.w && p.y<y) y=p.y;
+  }
+  return y;
+}
+
 // Entities
 function mkPlayer(){return {x:10,y:140,w:10,h:14,vx:0,vy:0,onGround:false,dir:1, inv:0}} // inv frames
 function mkEnemy(x,y){return {x,y,w:10,h:14,vx:(rng()<.5?-0.6:0.6),type:'punk',alive:true}}
@@ -115,8 +124,8 @@ function resetRuntime(){
   const enemyCount=Math.floor(levelLength/150);
   for(let i=0;i<enemyCount;i++){
     const x=120+i*150;
-    const y=140-(i%4)*20 - state.level*5;
-    level.enemies.push(mkEnemy(x,y-14));
+    const y=groundY(x)-14;
+    level.enemies.push(mkEnemy(x,y));
   }
   // pickups spread: mostly lighters, few coins/gin
   const pickupCount=Math.floor(levelLength/120);
@@ -129,7 +138,8 @@ function resetRuntime(){
   }
   const arena=level.platforms[level.platforms.length-1];
   level.boss=mkBoss(state.level,arena);
-
+  // ensure boss rests exactly on its arena platform
+  level.boss.y = arena.y - level.boss.h;
   level.goal=null; level.cleared=false; camX=0;
   level.player=mkPlayer();
 }
