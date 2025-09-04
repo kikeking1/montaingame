@@ -115,7 +115,8 @@ function mkBoss(level, arena){
 }
 
 // Level runtime objects
-let level={ platforms:[], enemies:[], pickups:[], bullets:[], smokes:[], boss:null, goal:null, player:null, bossShots:[], cleared:false };
+let level={ platforms:[], enemies:[], pickups:[], bullets:[], smokes:[], boss:null, goal:null, player:null, bossShots:[], cleared:false, arena:null };
+
 
 function resetRuntime(){
   const map=buildLevel(state.level);
@@ -138,9 +139,12 @@ function resetRuntime(){
     level.pickups.push(mkPickup(x,y,kind));
   }
   const arena=level.platforms[level.platforms.length-1];
-  level.boss=mkBoss(state.level,arena);
-  // ensure boss rests exactly on its arena platform
-  level.boss.y = arena.y - level.boss.h;
+  level.arena=arena;
+  level.boss = state.level===2 ? null : mkBoss(state.level,arena);
+  if(level.boss){
+    // ensure boss rests exactly on its arena platform
+    level.boss.y = arena.y - level.boss.h;
+  }
   level.goal=null; level.cleared=false; camX=0;
   level.player=mkPlayer();
 }
@@ -381,9 +385,15 @@ function updatePlay(){
     }
     level.bullets = level.bullets.filter(b=>!b.dead);
 
+
     for(const s of level.smokes){ s.t--; }
     level.smokes = level.smokes.filter(s=>s.t>0);
 
+  // boss spawn for level 3 when player reaches arena
+  if(state.level===2 && !level.boss && p.x+80 >= level.arena.x){
+    level.boss = mkBoss(2, level.arena);
+    level.boss.y = level.arena.y - level.boss.h;
+  }
   // boss logic
   const B=level.boss; if(B && B.hp>0){
     B.cd--;
