@@ -262,11 +262,13 @@ function drawStartInfo(){
   ctx.fillStyle='#fff'; ctx.font='bold 12px system-ui';
   ctx.fillText('Objetos', leftX, top);
   ctx.fillText('Enemigos', rightX, top);
+
   const items=[
     {kind:'coin', name:'Moneda', desc:'Cuando un punky se te acerca puedes darle un euro para evitar la puñalada.'},
     {kind:'gin', name:'Ginebra', desc:'Bebida que te revitaliza y recupera energia.'},
     {kind:'lighter', name:'Mechero', desc:'Con esto podrás encender tus canutos y ennubar a los punkys.'},
   ];
+
   let y1=top+10;
   for(const it of items){
     drawPickup({x:leftX, y:y1, kind:it.kind});
@@ -296,6 +298,7 @@ function drawStartInfo(){
     const textX=rightX+iconW+4;
     wrapText(`${en.name}: ${en.desc}`, textX, y2+5, colW-iconW-8, 12);
     y2+=28;
+
   }
 }
 function shade(hex,amt){ // naive shade
