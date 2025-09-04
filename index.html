@@ -349,13 +349,38 @@ function drawPickup(it){
 
 function drawBoss(b,theme){
   const x=b.x-camX,y=b.y;
-  const col=b.type==='arena'?'#caa':b.type==='salchicha'?'#a53':'#f7a';
-  // body
-  ctx.fillStyle=col; ctx.fillRect(x,y+4,b.w,b.h-4);
-  // arms
-  ctx.fillRect(x-4,y+6,4,4); ctx.fillRect(x+b.w,y+6,4,4);
-  // head
-  ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+4,y,b.w-8,4);
+  if(b.type==='arena'){
+    // triangular sand mound with mouth
+    ctx.fillStyle='#d6c18f';
+    ctx.beginPath();
+    ctx.moveTo(x+b.w/2,y);
+    ctx.lineTo(x,y+b.h);
+    ctx.lineTo(x+b.w,y+b.h);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle='#000';
+    ctx.fillRect(x+b.w/2-4,y+b.h-6,8,4);
+  } else if(b.type==='salchicha'){
+    // original humanoid body
+    ctx.fillStyle='#a53'; ctx.fillRect(x,y+4,b.w,b.h-4);
+    ctx.fillRect(x-4,y+6,4,4); ctx.fillRect(x+b.w,y+6,4,4);
+    ctx.fillStyle='#ffd7b5'; ctx.fillRect(x+4,y,b.w-8,4);
+  } else {
+    // pig-like boss
+    ctx.fillStyle='#f7a';
+    ctx.fillRect(x+2,y+6,b.w-4,b.h-6); // body
+    ctx.fillRect(x+4,y,b.w-8,6); // head
+    ctx.fillRect(x+4,y-2,4,2); // ears
+    ctx.fillRect(x+b.w-8,y-2,4,2);
+    ctx.fillStyle='#faa';
+    ctx.fillRect(x+b.w/2-4,y+2,8,4); // snout
+    ctx.fillStyle='#000';
+    ctx.fillRect(x+b.w/2-2,y+3,1,1);
+    ctx.fillRect(x+b.w/2+1,y+3,1,1);
+    ctx.fillStyle='#f7a';
+    ctx.fillRect(x+4,y+b.h-2,4,2); // legs
+    ctx.fillRect(x+b.w-8,y+b.h-2,4,2);
+  }
   if(theme){
     // HP bar
     ctx.fillStyle='#000'; ctx.fillRect(10,10,100,4);
