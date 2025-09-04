@@ -417,7 +417,6 @@ function updatePlay(){
       if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
     }
     level.bullets = level.bullets.filter(b=>!b.dead);
-
     for(const s of level.smokes){ s.t--; }
     level.smokes = level.smokes.filter(s=>s.t>0);
 
