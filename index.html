@@ -117,6 +117,7 @@ function mkBoss(level, arena){
 // Level runtime objects
 let level={ platforms:[], enemies:[], pickups:[], bullets:[], smokes:[], boss:null, goal:null, player:null, bossShots:[], cleared:false, arena:null };
 
+
 function resetRuntime(){
   const map=buildLevel(state.level);
   level.platforms=map.platforms; levelLength=map.len;
@@ -383,6 +384,7 @@ function updatePlay(){
       if(level.boss && level.boss.hp>0 && aabb(b,level.boss)){ level.boss.hp--; b.dead=true; }
     }
     level.bullets = level.bullets.filter(b=>!b.dead);
+
 
     for(const s of level.smokes){ s.t--; }
     level.smokes = level.smokes.filter(s=>s.t>0);
