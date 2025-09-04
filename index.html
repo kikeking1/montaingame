@@ -83,7 +83,8 @@ function buildLevel(lv){
     platforms.push({x,y,w:60,h:6});
   }
   // boss arena platform near the end
-  platforms.push({x:len-160,y:120 - lv*5,w:120,h:6});
+  // lower the platform so the player can reach the boss with a single jump
+  platforms.push({x:len-160,y:140 - lv*5,w:120,h:6});
   return {platforms,len};
 }
 
