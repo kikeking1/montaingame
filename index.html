@@ -157,14 +157,9 @@ function drawStart(){
   ctx.fillStyle='#101018'; ctx.fillRect(0,0,W,H);
   drawTitle('RETRO ASCENSO');
   drawSub('Plataformas 8-bit · JS+Canvas');
-  renderButtons([
-    {label:'Comenzar', onClick:()=>{state.screen='map'; renderUIButtons()}},
-    {label:'Controles: ←/→ moverse · Espacio saltar · F disparar', small:true}
-  ]);
 }
 
 function drawMap(){
-  const t=themes[state.trophies.filter(Boolean).length];
   ctx.fillStyle='#0e141a'; ctx.fillRect(0,0,W,H);
   // simple mountain triangle
   ctx.fillStyle='#223'; triangle(W/2,H-10, 40, -120);
@@ -178,12 +173,6 @@ function drawMap(){
   }
   drawTitle('Selecciona nivel');
   drawSub(`Nivel actual: ${state.level+1} · ${themes[state.level].name}`);
-  renderButtons([
-    {label:'Jugar nivel', onClick:()=>{startLevel()}},
-    {label:'← Nivel', onClick:()=>{state.level=(state.level+2)%3; renderUIButtons()}},
-    {label:'Nivel →', onClick:()=>{state.level=(state.level+1)%3; renderUIButtons()}},
-    {label:'Inicio', onClick:()=>{state.screen='start'; renderUIButtons()}},
-  ]);
 }
 
 function startLevel(){
@@ -220,9 +209,6 @@ function drawEnding(){
   ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
   drawTitle('¡Has llegado a la cima!');
   drawSub('“Extraño ha sido el viaje, más extraño es volver a la rutina”');
-  renderButtons([
-    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; renderUIButtons();}},
-  ]);
 }
 
 // Rendering helpers
@@ -279,12 +265,22 @@ function renderButtons(list){
   });
 }
 function renderUIButtons(){
-  if(state.screen==='start') return renderButtons([]);
-  if(state.screen==='map') return; // buttons already drawn in drawMap
-  if(state.screen==='play') return renderButtons([
-    {label:'Salir', onClick:()=>{state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden'); renderUIButtons()}},
+  if(state.screen==='start') return renderButtons([
+    {label:'Comenzar', onClick:()=>{state.screen='map'; renderUIButtons();}},
+    {label:'Controles: ←/→ moverse · Espacio saltar · F disparar', small:true},
   ]);
-  if(state.screen==='ending') return; // ending screen buttons drawn there
+  if(state.screen==='map') return renderButtons([
+    {label:'Jugar nivel', onClick:()=>{startLevel();}},
+    {label:'← Nivel', onClick:()=>{state.level=(state.level+2)%3; renderUIButtons();}},
+    {label:'Nivel →', onClick:()=>{state.level=(state.level+1)%3; renderUIButtons();}},
+    {label:'Inicio', onClick:()=>{state.screen='start'; renderUIButtons();}},
+  ]);
+  if(state.screen==='play') return renderButtons([
+    {label:'Salir', onClick:()=>{state.screen='map'; hud.classList.add('hidden'); statusBox.classList.add('hidden'); renderUIButtons();}},
+  ]);
+  if(state.screen==='ending') return renderButtons([
+    {label:'Volver al inicio', onClick:()=>{state.screen='start'; state.trophies=[false,false,false]; state.level=0; state.lives=3; state.shields=0; state.coins=0; state.ammo=0; renderUIButtons();}},
+  ]);
 }
 
 // Gameplay update
